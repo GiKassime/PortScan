@@ -44,8 +44,6 @@ source .venv/bin/activate
 
 ```bash
 pip install scapy
-# ou, se quiser usar o requirements.txt
-pip install -r requirements.txt
 ```
 
 Notas importantes:
@@ -53,7 +51,7 @@ Notas importantes:
 - O Scapy precisa de privilégios de root para enviar pacotes raw (ex.: SYN/UDP). Para executar o scanner você pode usar sudo ao chamar o Python:
 
 ```bash
-sudo python portscan.py <IP> [-udp|-ack|-decoy]
+sudo python3 portscan.py <IP> [-udp|-ack|-decoy]
 ```
 
 - No Linux, algumas funcionalidades do Scapy dependem de libs de sistema (geralmente já instaladas). Se o sistema reclamar, instale pacotes extras via apt (Debian/Ubuntu):

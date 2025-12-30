@@ -1,7 +1,8 @@
 import sys
 import socket
 import time
-
+import signal
+import threading
 try:
     from scapy.all import *
 except ImportError:
@@ -10,18 +11,24 @@ except ImportError:
     print("[-] Se estiver no Windows, instale também o Npcap: https://npcap.com/\n")
     sys.exit(1)
 
+detecta_parada = threading.Event()
 
+# Handler para sinais (Ctrl+C -> SIGINT, SIGTERM). Apenas sinaliza o Event
+def _handle_signal(signum, frame):
+    detecta_parada.set()
+
+signal.signal(signal.SIGINT, _handle_signal)
+signal.signal(signal.SIGTERM, _handle_signal)
 
 def main():
     # para executar o portscan precisa de um ip ou hostname + opcionalmente um argumento
-    # uso esperado: python3 portscan.py <IP> [ -udp | -ack | -decoy ]
     if len(sys.argv) < 2:
         print("Digite python3 portscan.py -help para ajuda.")
         sys.exit(1)
     #pega a primeira parte do comando que é o ip ou hostname
     input_usuario = sys.argv[1]
     
-    # Verificar se o usuário pediu ajuda
+    # se oediu ajuda:
     if input_usuario == '-help':
         menu_help()
         sys.exit(0)
@@ -101,18 +108,6 @@ def main():
 
 
 def enviar_pacote(ip_alvo, porta, flags, protocolo='tcp'):
-    """
-    Função auxiliar para criar e enviar pacotes
-    
-    Args:
-        ip_alvo: IP de destino
-        porta: Porta de destino
-        flags: Flags TCP (ex: 'S', 'A', 'SA')
-        protocolo: 'tcp' ou 'udp'
-    
-    Returns:
-        Resposta do pacote ou None
-    """
     if protocolo == 'tcp':
         pacote = IP(dst=ip_alvo)/TCP(dport=porta, flags=flags)
     else:  # udp
@@ -252,6 +247,8 @@ def obter_servico(porta, protocolo):
     
 def percorre_portas(inicio_porta, fim_porta, funcao_scan, ip_alvo):
     for porta in range(inicio_porta, fim_porta + 1):
+        if detecta_parada.is_set():
+            parar()
         funcao_scan(ip_alvo, porta)
         time.sleep(0.1)  # evita sobrecarga na rede
         
@@ -263,7 +260,17 @@ def menu_help():
     print("  -decoy   Realiza um scan com IPs falsos para despistar o alvo")
     print("  -p       Especifique uma porta única (ex: 22) ou intervalo (ex: 1-1024). Padrão: 1-1024")
     print("Se nenhuma opção for fornecida, será realizado um SYN Scan padrão.")
-        
+
+def parar():
+    print("\n[!] Scan interrompido pelo usuário.")
+    sys.exit(0)
 # garante que o script só rode se for executado diretamente
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Caso um KeyboardInterrupt ocorra (por exemplo em algumas situações),
+        # garante parada limpa através do Event e sai sem traceback.
+        detecta_parada.set()
+        print("\n[!] KeyboardInterrupt — encerrando.")
+        sys.exit(0)
