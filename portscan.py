@@ -29,6 +29,8 @@ TIPOS_SCAN = {
 }
 
 
+signal.signal(signal.SIGINT, _handle_signal)
+signal.signal(signal.SIGTERM, _handle_signal)
 
 def main():
     # espera plmns 2 argumentos que é o nome do scr e o hostname/ip
@@ -39,7 +41,7 @@ def main():
     #pega a primeira parte do comando que é o ip ou hostname
     input_usuario = sys.argv[1]
     
-    # Verificar se o usuário pediu ajuda
+    # se oediu ajuda:
     if input_usuario == '-help':
         menu_help()
         sys.exit(0)
@@ -342,4 +344,11 @@ def menu_help():
         
 # garante que o script só rode se for executado diretamente
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        # Caso um KeyboardInterrupt ocorra (por exemplo em algumas situações),
+        # garante parada limpa através do Event e sai sem traceback.
+        detecta_parada.set()
+        print("\n[!] KeyboardInterrupt — encerrando.")
+        sys.exit(0)
