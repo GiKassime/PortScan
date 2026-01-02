@@ -28,10 +28,6 @@ TIPOS_SCAN = {
     '-ack': ('ack', 'ACK Scan')
 }
 
-
-signal.signal(signal.SIGINT, _handle_signal)
-signal.signal(signal.SIGTERM, _handle_signal)
-
 def main():
     # espera plmns 2 argumentos que é o nome do scr e o hostname/ip
     if len(sys.argv) < 2:
@@ -341,14 +337,10 @@ def menu_help():
     print(f"  {Fore.WHITE}python3 portscan.py 192.168.1.1 -syn -decoy 48 -p 1-100{Style.RESET_ALL}     {Fore.GREEN}# SYN com 48 IPs decoy{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}python3 portscan.py 10.0.0.1 -udp -decoy 10 -p 53,123{Style.RESET_ALL}       {Fore.GREEN}# UDP com 10 IPs decoy{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}python3 portscan.py 10.0.0.1 -ack -decoy 100{Style.RESET_ALL}                {Fore.GREEN}# ACK scan com 100 IPs decoy{Style.RESET_ALL}\n")
-        
-# garante que o script só rode se for executado diretamente
+
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        # Caso um KeyboardInterrupt ocorra (por exemplo em algumas situações),
-        # garante parada limpa através do Event e sai sem traceback.
-        detecta_parada.set()
-        print("\n[!] KeyboardInterrupt — encerrando.")
+        print(f"\n{Fore.YELLOW}{Style.BRIGHT}[⚠] Scan interrompido pelo usuário (Ctrl+C).{Style.RESET_ALL}")
         sys.exit(0)
