@@ -1,88 +1,143 @@
-# PortScan em Python com Scapy
+# 🔍 PortScan - Scanner de Portas em Python
 
-Um scanner de portas desenvolvido em Python utilizando a biblioteca Scapy.
+Scanner de portas desenvolvido com Scapy, suportando múltiplos tipos de scan (SYN, UDP, ACK, Decoy).
 
-## 📋 Pré-requisitos
+---
 
-Para executar este projeto, você precisará de:
+## 📋 Requisitos
 
-1.  **Python 3.x** instalado.
-2.  **Privilégios de Administrador/Root** (o Scapy precisa disso para criar pacotes).
+- **Python 3.x**
+- **Privilégios de Administrador/Root** (necessário para envio de pacotes raw)
+- **Dependências de sistema:**
+  - **Windows:** [Npcap](https://npcap.com/#download) (marque "WinPcap API-compatible Mode")
+  - **Linux:** `sudo apt install tcpdump libpcap-dev`
 
-### Dependências de Sistema
+---
 
-* **Windows:** É necessário instalar o [Npcap](https://npcap.com/#download).
-    * *Importante:* Durante a instalação, marque a opção "Install Npcap in WinPcap API-compatible Mode".
-* **Linux:** Geralmente já vem pronto, mas pode necessitar do tcpdump (`sudo apt install tcpdump`).
+## ⚙️ Instalação
 
-### Instalação da Biblioteca
-## Crie uma venv
-Execute o comando abaixo para instalar a dependência do Python:
+### 1. Clone o repositório
+```bash
+git clone https://github.com/GiKassime/PortScan.git
+cd PortScan
+```
 
-# PortScan em Python com Scapy
-
-Um scanner de portas desenvolvido em Python utilizando a biblioteca Scapy.
-
-## Usando um ambiente virtual (venv) e instalando Scapy
-
-Recomendo fortemente criar um ambiente virtual para este projeto — isso evita conflitos com pacotes do sistema e resolve a mensagem "externally-managed-environment" em distribuições como Debian/Ubuntu.
-
-1. Crie o venv (no diretório do projeto):
-
+### 2. Crie um ambiente virtual (recomendado)
 ```bash
 python3 -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+# ou
+.venv\Scripts\activate     # Windows
 ```
 
-2. Ative o venv:
-
+### 3. Instale as dependências
 ```bash
-source .venv/bin/activate
-```
-
-
-3. Instale as dependências do projeto (ex.: Scapy):
-
-```bash
-pip install scapy
-# ou, se quiser usar o requirements.txt
 pip install -r requirements.txt
 ```
 
-Notas importantes:
+---
 
-- O Scapy precisa de privilégios de root para enviar pacotes raw (ex.: SYN/UDP). Para executar o scanner você pode usar sudo ao chamar o Python:
+## 🚀 Uso
 
+### Menu de Ajuda
 ```bash
-sudo python portscan.py <IP> [-udp|-ack|-decoy]
+python3 portscan.py -help
 ```
 
-- No Linux, algumas funcionalidades do Scapy dependem de libs de sistema (geralmente já instaladas). Se o sistema reclamar, instale pacotes extras via apt (Debian/Ubuntu):
+![Menu de Ajuda](imgs/help.png)
 
+---
+
+## 📊 Tipos de Scan
+
+### 1️⃣ SYN Scan (Padrão)
+Técnica stealth que não completa o three-way handshake TCP.
+
+**Comando:**
 ```bash
-sudo apt update
-sudo apt install python3-full tcpdump libpcap-dev
+sudo python3 portscan.py <IP> -p 1-1000
 ```
 
-- Se você receber a mensagem sobre "externally-managed-environment" ao tentar instalar globalmente, não passe `--break-system-packages` — crie um venv como mostrado acima.
+**Resultado do Scan:**
 
-### Como executar o `portscan.py` (exemplo):
+![SYN Scan - Resultado](imgs/syn.png)
 
+**Captura no Wireshark:**
+
+![SYN Scan - Wireshark](imgs/syn_wireshark.png)
+
+---
+
+### 2️⃣ UDP Scan
+Identifica portas UDP abertas (mais lento que TCP).
+
+**Comando:**
 ```bash
-# com venv ativado
-python portscan.py 1.2.3.4 -udp
-
-# ou como root (se necessário para envio de pacotes raw)
-sudo python portscan.py 1.2.3.4 -udp
+sudo python3 portscan.py <IP> -udp -p 1-1000
 ```
 
-Como sair do venv:
+**Resultado do Scan:**
 
+![UDP Scan - Resultado](imgs/udp.png)
+
+**Captura no Wireshark:**
+
+![UDP Scan - Wireshark](imgs/udp_wireshark.png)
+
+---
+
+### 3️⃣ ACK Scan
+Detecta regras de firewall e portas filtradas.
+
+**Comando:**
 ```bash
-deactivate
+sudo python3 portscan.py <IP> -ack -p 1-1000
 ```
 
-Remoção do venv (se necessário):
+**Resultado do Scan:**
+
+![ACK Scan - Resultado](imgs/ack.png)
+
+**Captura no Wireshark:**
+
+![ACK Scan - Wireshark](imgs/ack_wireshark.png)
+
+---
+
+### 4️⃣ Decoy Scan
+Envia pacotes com IPs falsos para dificultar rastreamento.
+
+**Comando:**
+```bash
+sudo python3 portscan.py <IP> -decoy -p 1-1000
+```
+
+**Resultado do Scan:**
+
+![Decoy Scan - Resultado](imgs/decoy.png)
+
+**Captura no Wireshark:**
+
+![Decoy Scan - Wireshark](imgs/decoy_wireshark.png)
+
+---
+
+## 📝 Exemplos 
 
 ```bash
-rm -rf .venv
+# Scan SYN em porta específica
+sudo python3 portscan.py 192.168.1.1 -p 80
+
+# Scan UDP em range de portas
+sudo python3 portscan.py scanme.nmap.org -udp -p 53-100
+
+# Scan ACK para detectar firewall
+sudo python3 portscan.py 10.0.0.1 -ack -p 1-1024
+
+# Decoy scan com IPs falsos
+sudo python3 portscan.py 192.168.1.1 -decoy -p 22-443
 ```
+
+---
+
+
