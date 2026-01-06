@@ -2,25 +2,44 @@ import sys
 import socket
 import time
 import random
+import warnings
+import logging
+import re
+
+warnings.filterwarnings("ignore")
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+logging.getLogger("scapy.layers.arp").setLevel(logging.ERROR)
+
 try:
-    from scapy.all import *
-except ImportError:
+    from scapy.all import IP, TCP, UDP, ICMP, sr1, send, conf, Raw
+except ImportError as e:
     print("\nA biblioteca 'scapy' não está instalada.")
     print("[-] Para corrigir, execute: pip install scapy")
     print("[-] Se estiver no Windows, instale também o Npcap: https://npcap.com/\n")
     sys.exit(1)
+except Exception as e:
+    try:
+        from scapy.packet import Packet
+        from scapy.layers.inet import IP, TCP, UDP, ICMP
+        from scapy.packet import Raw
+        from scapy.sendrecv import sr1, send
+        from scapy import conf
+    except ImportError:
+        print("[!] Erro ao carregar Scapy")
+        sys.exit(1)
 
 try:
     from colorama import Fore, Style, init
-    init(autoreset=True)  # Reseta cores automaticamente
+    init(autoreset=True)
     CORES_DISPONIVEIS = True
 except ImportError:
-    # Se colorama não estiver instalado, define cores vazias
     class Fore:
         GREEN = RED = YELLOW = CYAN = BLUE = MAGENTA = WHITE = ''
     class Style:
         BRIGHT = RESET_ALL = ''
     CORES_DISPONIVEIS = False
+
+conf.verb = 0
 
 TIPOS_SCAN = {
     '-syn': ('syn', 'SYN Scan'),
@@ -29,33 +48,36 @@ TIPOS_SCAN = {
 }
 
 def main():
-    # espera plmns 2 argumentos que é o nome do scr e o hostname/ip
     if len(sys.argv) < 2:
         print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro: Nenhum argumento fornecido!{Style.RESET_ALL}")
         print(f"{Fore.CYAN}[?] Digite: python3 portscan.py -help para ajuda.{Style.RESET_ALL}")
         sys.exit(1)
-    #pega a primeira parte do comando que é o ip ou hostname
+    
     input_usuario = sys.argv[1]
     
-    # se oediu ajuda:
     if input_usuario == '-help':
         menu_help()
         sys.exit(0)
 
-    # trtamento de dns e exceções
     try:
-        ip_alvo = socket.gethostbyname(input_usuario)
+        ip_alvo = validar_e_resolver_ip(input_usuario)
+        
+        print(f"\n{Fore.CYAN}[*] Verificando disponibilidade do host {ip_alvo}...{Style.RESET_ALL}", end="", flush=True)
+        if not verificar_host_vivo(ip_alvo):
+            print(f"\n{Fore.RED}{Style.BRIGHT}[✗] Erro: Host não respondeu a ping (offline ou firewall bloqueia ICMP){Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}[!] Scan cancelado.{Style.RESET_ALL}")
+            return
+        else:
+            print(f" {Fore.GREEN}✓ Host disponível{Style.RESET_ALL}\n")
 
-        # Valores padrão
         inicio_porta = 1
         fim_porta = 1024
-        lista_portas = None  # Para portas separadas por vírgula
-        tipo_scan = 'syn' 
+        lista_portas = None
+        tipo_scan = 'syn'
         usar_decoy = False
-        qtd_decoy = 2  # Quantidade padrão de IPs decoy
+        qtd_decoy = 2
         scan_nome = 'SYN Scan (Padrão)'
 
-        # Argumentos adicionais
         args = sys.argv[2:]
         i = 0
         while i < len(args):
@@ -66,39 +88,30 @@ def main():
                 i += 1
                 continue
             
-            # Modificador decoy
             if arg == '-decoy':
-                if usar_decoy:
-                    print(f"{Fore.YELLOW}[!] Aviso: -decoy já foi especificado, ignorando duplicada.{Style.RESET_ALL}")
-                    i += 1
-                    continue
                 usar_decoy = True
-                # Verifica se tem um número após -decoy
                 if i + 1 < len(args) and args[i + 1].isdigit():
-                    qtd_decoy = int(args[i + 1])  # Define quantidade de IPs decoy
+                    qtd_decoy = int(args[i + 1])
                     i += 2
                 else:
                     i += 1
                 continue
 
             if arg == '-p':
-                # precisa ter o próximo valor
                 if i + 1 >= len(args):
                     print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro: faltou o valor após -p!{Style.RESET_ALL}")
                     print(f"{Fore.CYAN}[?] Exemplos: -p 80 | -p 80-443 | -p 80,443,22{Style.RESET_ALL}")
                     sys.exit(1)
+                
                 valor = args[i + 1]
                 try:
                     tipo_porta, dados_porta = validar_portas(valor)
                     if tipo_porta == 'lista':
-                        # Lista de portas separadas por vírgula
                         lista_portas = dados_porta
                     elif tipo_porta == 'intervalo':
-                        # Intervalo de portas
                         inicio_porta, fim_porta = dados_porta
                         lista_portas = None
-                    else:  # 'unica'
-                        # Porta única
+                    else:
                         inicio_porta = fim_porta = dados_porta
                         lista_portas = None
                 except ValueError as ve:
@@ -107,96 +120,136 @@ def main():
                 i += 2
                 continue
 
-            # argumento desconhecido
             if arg.startswith('-'):
                 print(f"{Fore.YELLOW}[!] Aviso: argumento desconhecido '{arg}' será ignorado.{Style.RESET_ALL}")
             i += 1
 
-        # Atualizar nome do scan se usar decoy
         if usar_decoy:
-            scan_nome += ' com Decoy'
+            scan_nome += f' {Fore.MAGENTA}com Decoy ({qtd_decoy} IPs){Style.RESET_ALL}'
         
-        # Formatar exibição de portas
         if lista_portas:
             portas_str = ','.join(map(str, lista_portas))
         else:
             portas_str = f"{inicio_porta}-{fim_porta}"
         
-        print(f"\n{Fore.CYAN}{Style.BRIGHT}[*] Iniciando {scan_nome} em {Fore.GREEN}{ip_alvo}{Fore.CYAN} | Portas: {Fore.YELLOW}{portas_str}{Style.RESET_ALL}\n")
-        percorre_portas(inicio_porta, fim_porta, tipo_scan, ip_alvo, usar_decoy, qtd_decoy, lista_portas)
+        print(f"{Fore.CYAN}{Style.BRIGHT}[*] Iniciando {scan_nome} {Fore.CYAN}em {Fore.GREEN}{ip_alvo}{Fore.CYAN} | Portas: {Fore.YELLOW}{portas_str}{Style.RESET_ALL}\n")
+        total_portas, portas_abertas = percorre_portas(inicio_porta, fim_porta, tipo_scan, ip_alvo, usar_decoy, qtd_decoy, lista_portas)
+        
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}[*] Scan concluído: {Fore.GREEN}{portas_abertas}{Fore.CYAN} porta(s) aberta(s) de {total_portas} escaneada(s){Style.RESET_ALL}")
+        if portas_abertas == 0:
+            print(f"{Fore.YELLOW}[!] Resto FECHADA{Style.RESET_ALL}")
                 
-    except socket.gaierror:
-        # Erro de DNS 
-        print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro de DNS: Não foi possível resolver '{input_usuario}'{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}[!] Verifique se o IP/hostname está correto.{Style.RESET_ALL}")
+    except ValueError as ve:
+        print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro: {ve}{Style.RESET_ALL}")
+        return
+    except socket.gaierror as ge:
+        print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro de DNS: Não foi possível resolver o domínio '{input_usuario}'{Style.RESET_ALL}")
         return
     except KeyboardInterrupt:
-        print(f"\n{Fore.YELLOW}{Style.BRIGHT}[⚠] Scan interrompido pelo usuário.{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}{Style.BRIGHT}[⚠] Scan interrompido pelo usuário (Ctrl+C).{Style.RESET_ALL}")
         return
     except Exception as e:
-        print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro inesperado: {e}{Style.RESET_ALL}")
+        print(f"{Fore.RED}{Style.BRIGHT}[✗] Erro inesperado: {type(e).__name__}: {e}{Style.RESET_ALL}")
         return
+
+
+def validar_e_resolver_ip(input_usuario):
+    padrao_ipv4 = r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$'
+    
+    if re.match(padrao_ipv4, input_usuario):
+        octetos = list(map(int, input_usuario.split('.')))
+        for i, octeto in enumerate(octetos, 1):
+            if octeto < 0 or octeto > 255:
+                raise ValueError(f"Octeto {i} inválido: {octeto} deve estar entre 0-255")
+        return input_usuario
+    else:
+        try:
+            ip = socket.gethostbyname(input_usuario)
+            return ip
+        except socket.gaierror:
+            raise socket.gaierror(f"Não foi possível resolver o domínio '{input_usuario}'")
+
+
+def verificar_host_vivo(ip_alvo, timeout=2):
+    try:
+        conf.verb = 0
+        pacote = IP(dst=ip_alvo)/ICMP()
+        resposta = sr1(pacote, timeout=timeout, retry=0)
+        return resposta is not None
+    except Exception:
+        return False
 
 
 def percorre_portas(inicio_porta, fim_porta, tipo_scan, ip_alvo, usar_decoy=False, qtd_decoy=2, lista_portas=None):
     SCANS = {'syn': scan_syn, 'udp': scan_udp, 'ack': scan_ack}
     funcao_scan = SCANS.get(tipo_scan, scan_syn)  
     
-    # Se tem lista de portas específicas, usa ela
+    total_portas = 0
+    portas_abertas = 0
+    
     if lista_portas:
         for porta in lista_portas:
-            funcao_scan(ip_alvo, porta, usar_decoy, qtd_decoy)
+            total_portas += 1
+            resultado = funcao_scan(ip_alvo, porta, usar_decoy, qtd_decoy)
+            if resultado:
+                portas_abertas += 1
             time.sleep(0.1)
     else:
-        # Senão, usa intervalo
         for porta in range(inicio_porta, fim_porta + 1):
-            funcao_scan(ip_alvo, porta, usar_decoy, qtd_decoy)
-            time.sleep(0.1) 
-        
+            total_portas += 1
+            resultado = funcao_scan(ip_alvo, porta, usar_decoy, qtd_decoy)
+            if resultado:
+                portas_abertas += 1
+            time.sleep(0.1)
+    
+    return total_portas, portas_abertas
 
-# Funções de scan
+
 def scan_syn(ip_alvo, porta, usar_decoy=False, qtd_decoy=2):
-    # Envia pacotes decoy antes do scan real
     if usar_decoy:
         enviar_pacotes_decoy(ip_alvo, porta, qtd_decoy=qtd_decoy)
-        time.sleep(1)  # Aguarda depois dos decoys
+        time.sleep(1)
     
-    # Envia pacote SYN para verificar se a porta está aberta
     resposta = enviar_pacote(ip_alvo, porta, 'S')
-    if resposta is None:  # Nenhuma resposta 
-        return
+    if resposta is None:
+        return False
     
-    # Se receber SYN-ACK (0x12), a porta está aberta
+    # SYN-ACK (0x12) = porta aberta
     if resposta.haslayer(TCP) and resposta[TCP].flags == 0x12:
-        enviar_pacote(ip_alvo, porta, 'R')  # Envia RST para fechar a conexão
-        servico = obter_servico(porta, 'tcp')  # Descobre o nome do serviço
-        modo = formatar_modo_decoy(usar_decoy)  # Adiciona "(decoy)" se necessário
+        enviar_pacote(ip_alvo, porta, 'R', seq=resposta[TCP].ack)
+        servico = obter_servico(porta, 'tcp')
+        modo = formatar_modo_decoy(usar_decoy)
         print(f"{Fore.GREEN}[+] Porta {porta}/tcp aberta - Serviço: {servico}{modo}{Style.RESET_ALL}")
+        return True
+    
+    return False
 
 def scan_udp(ip_alvo, porta, usar_decoy=False, qtd_decoy=2):
     if usar_decoy:
         enviar_pacotes_decoy(ip_alvo, porta, protocolo='udp', qtd_decoy=qtd_decoy)
     
-    # Envia pacote UDP para verificar a porta
-    resposta = enviar_pacote(ip_alvo, porta, flags='', protocolo='udp')
-    if resposta is None:  # Sem resposta = porta pode estar aberta ou filtrada
+    payload = gerar_payload_udp(porta)
+    resposta = enviar_pacote_udp_com_payload(ip_alvo, porta, payload)
+    
+    if resposta is None:
         servico = obter_servico(porta, 'udp')
         modo = formatar_modo_decoy(usar_decoy)
         print(f"{Fore.CYAN}[?] Porta {porta}/udp aberta|filtrada - Serviço: {servico}{modo}{Style.RESET_ALL}")
-        return
+        return True
 
-    # Se receber resposta UDP, porta está aberta
     if resposta.haslayer(UDP):
         servico = obter_servico(porta, 'udp')
         modo = formatar_modo_decoy(usar_decoy)
         print(f"{Fore.GREEN}[+] Porta {porta}/udp aberta - Serviço: {servico}{modo}{Style.RESET_ALL}")
-        return
+        return True
 
-    # Se receber ICMP code 3,3 (porta fechada), ignora
+    # ICMP type 3, code 3 = Destination Unreachable (porta fechada)
     if resposta.haslayer(ICMP):
-        icmp = resposta[ICMP]  # Extrai a camada ICMP
-        if int(icmp.type) == 3 and int(icmp.code) == 3:  # Destination Unreachable
-            return
+        icmp = resposta[ICMP]
+        if int(icmp.type) == 3 and int(icmp.code) == 3:
+            return False
+    
+    return False
 
 def scan_ack(ip_alvo, porta, usar_decoy=False, qtd_decoy=2):
     if usar_decoy:
@@ -207,50 +260,78 @@ def scan_ack(ip_alvo, porta, usar_decoy=False, qtd_decoy=2):
     
     if resposta is None:
         print(f"{Fore.YELLOW}[!] Porta {porta}/tcp filtrada (sem resposta){modo}{Style.RESET_ALL}")
-        return
+        return False
 
     if resposta.haslayer(TCP):
         flags = int(resposta[TCP].flags)
-        if flags in (0x04, 0x14):  # RST ou RST-ACK = porta aberta/não filtrada
+        if flags in (0x04, 0x14):
             print(f"{Fore.CYAN}[?] Porta {porta}/tcp não-filtrada (respondeu RST){modo}{Style.RESET_ALL}")
-            return
+            return True
 
     if resposta.haslayer(ICMP):
         icmp = resposta[ICMP]
         if int(icmp.type) == 3 and int(icmp.code) in (1, 2, 3, 9, 10, 13):
             print(f"{Fore.YELLOW}[!] Porta {porta}/tcp filtrada (ICMP code {int(icmp.code)}){Style.RESET_ALL}")
-            return
+            return False
     
-def enviar_pacote(ip_alvo, porta, flags, protocolo='tcp'):
-    # Monta pacote TCP ou UDP com IP de destino
+    return False
+    
+def enviar_pacote(ip_alvo, porta, flags, protocolo='tcp', seq=None):
     if protocolo == 'tcp':
-        pacote = IP(dst=ip_alvo)/TCP(dport=porta, flags=flags)  # Pacote TCP com flags (ex: SYN, ACK, RST)
-    else:  # udp
-        pacote = IP(dst=ip_alvo)/UDP(dport=porta)  # Pacote UDP simples
+        if seq is not None:
+            pacote = IP(dst=ip_alvo)/TCP(dport=porta, flags=flags, seq=seq)
+        else:
+            pacote = IP(dst=ip_alvo)/TCP(dport=porta, flags=flags)
+    else:
+        pacote = IP(dst=ip_alvo)/UDP(dport=porta)
     
-    resposta = sr1(pacote, timeout=10, verbose=0)
+    resposta = sr1(pacote, timeout=3, retry=0, verbose=0)
     return resposta
+
+
+def enviar_pacote_udp_com_payload(ip_alvo, porta, payload, timeout=4):
+    try:
+        pacote = IP(dst=ip_alvo)/UDP(dport=porta)/payload
+        resposta = sr1(pacote, timeout=timeout, retry=0, verbose=0)
+        return resposta
+    except Exception:
+        return None
+
+
+def gerar_payload_udp(porta):
+    payloads = {
+        53: Raw(b'\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00'),  # DNS
+        67: Raw(b'\x01\x01\x06\x00' + b'\x00' * 12),  # DHCP
+        111: Raw(b'\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x02'),  # Portmap
+        123: Raw(b'\x1b' + b'\x00' * 47),  # NTP
+        137: Raw(b'\x89\x00\x00\x00\x00\x00\x00\x00\x00'),  # NetBIOS
+        138: Raw(b'\x89\x00\x00\x00\x00\x00\x00\x00\x00'),  # NetBIOS
+        161: Raw(b'\x30\x26\x02\x01\x00\x04\x06public'),  # SNMP
+        162: Raw(b'\x30\x26\x02\x01\x00\x04\x06public'),  # SNMP Trap
+        445: Raw(b'\x82\x00\x00\x00'),  # SMB
+        500: Raw(b'\x00' * 8),  # IKE
+        1900: Raw(b'M-SEARCH * HTTP/1.1\r\n'),  # SSDP
+    }
+    return payloads.get(porta, Raw(b'\x00' * 8))
 
 def enviar_pacotes_decoy(ip_alvo, porta, flags='S', protocolo='tcp', qtd_decoy=2):
     ips_decoy = [gerar_ip_falso() for _ in range(qtd_decoy)]
     
-   
     for ip_falso in ips_decoy:
         if protocolo == 'tcp':
-            pacote_decoy = IP(src=ip_falso, dst=ip_alvo)/TCP(dport=porta, flags=flags)  # Pacote TCP falso
+            pacote_decoy = IP(src=ip_falso, dst=ip_alvo)/TCP(dport=porta, flags=flags)
         else:
-            pacote_decoy = IP(src=ip_falso, dst=ip_alvo)/UDP(dport=porta)  # Pacote UDP falso
+            pacote_decoy = IP(src=ip_falso, dst=ip_alvo)/UDP(dport=porta)
         send(pacote_decoy, verbose=0) 
         time.sleep(0.05) 
 
 
 def validar_portas(valor):
-    # Verifica se são múltiplas portas separadas por vírgula (ex: 80,443,22)
     if ',' in valor:
-        portas = valor.split(',')  # Separa as portas
+        portas = valor.split(',')
         portas_validadas = []
         for porta_str in portas:
-            porta_str = porta_str.strip()  # Remove espaços
+            porta_str = porta_str.strip()
             try:
                 p = int(porta_str)
             except ValueError:
@@ -260,50 +341,44 @@ def validar_portas(valor):
                 raise ValueError(f'Porta {p} deve estar entre 1 e 65535')
             portas_validadas.append(p)
         
-        # Retorna lista de portas
         return 'lista', portas_validadas
     
-    # Verifica se é um intervalo de portas (ex: 80-443)
     elif '-' in valor:
-        partes = valor.split('-')  # Separa início e fim
+        partes = valor.split('-')
         if len(partes) != 2:
             raise ValueError('Use o formato: inicio-fim (ex: 80-443)')
         try:
-            a, b = int(partes[0]), int(partes[1])  # Converte para inteiros
+            a, b = int(partes[0]), int(partes[1])
         except ValueError:
             raise ValueError(f"'{valor}' não contém números válidos")
         
-        # Valida se as portas estão no intervalo permitido (1-65535)
         if a < 1 or a > 65535 or b < 1 or b > 65535:
             raise ValueError('Portas devem estar entre 1 e 65535')
         
-        return 'intervalo', (min(a, b), max(a, b))  # Retorna em ordem (menor, maior)
+        return 'intervalo', (min(a, b), max(a, b))
     else:
-        # Valida porta única
         try:
-            p = int(valor)  # Converte para inteiro
+            p = int(valor)
         except ValueError:
             raise ValueError(f"'{valor}' não é um número inteiro válido")
         
         if p < 1 or p > 65535:
             raise ValueError('Porta deve estar entre 1 e 65535')
         
-        return 'unica', p  # Retorna a mesma porta
+        return 'unica', p
 
 def formatar_modo_decoy(usar_decoy):
     return f" {Fore.MAGENTA}(decoy){Style.RESET_ALL}" if usar_decoy else ""
 
 def gerar_ip_falso():
-    # Gera um IP aleatório para usar no decoy scan
     return f"{random.randint(1,254)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}"
 
 
 def obter_servico(porta, protocolo):
-    # Tenta descobrir o nome do serviço usando a porta (ex: 80 = http, 22 = ssh)
     try:
         return socket.getservbyport(porta, protocolo)
     except:
-        return "desconhecido"  # Se não souber, retorna desconhecido
+        return "desconhecido"
 
 def menu_help():
     print(f"\n{Fore.CYAN}{Style.BRIGHT}╔══════════════════════════════════════════════════════════════════════════════╗")
