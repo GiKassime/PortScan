@@ -174,12 +174,7 @@ def verificar_host_vivo(ip_alvo, timeout=2):
     up = False
     resp_icmp = sr1(IP(dst=ip_alvo)/ICMP(), timeout=timeout, verbose=0)
     if resp_icmp:
-        up = True
-        print(_c(" ✓ Host respondeu a ping ICMP", Fore.GREEN))
-        
-    else:
-        print(_c(" ✗ Sem resposta ICMP", Fore.YELLOW))
-        
+        up = True 
     return up
 
 def percorre_portas(inicio_porta, fim_porta, tipo_scan, ip_alvo, usar_decoy=False, qtd_decoy=2, lista_portas=None):
