@@ -3,6 +3,7 @@ import socket
 import time
 import random
 
+
 # Color output (colorama)cores no texto
 try:
     from colorama import init as _colorama_init, Fore, Style
@@ -27,7 +28,7 @@ def _c(text, color='', bright=False):
     return f"{prefix}{text}{Style.RESET_ALL}"
 
 try:
-    from scapy.all import IP, TCP, UDP, ICMP, sr1, send, conf
+    from scapy.all import IP, TCP, UDP, ICMP, sr1, send, conf, get_if_addr
 except ImportError as e:
     print(_c("[!] Erro: Scapy não está instalado ou não foi encontrado no ambiente atual", Fore.RED, bright=True))
     print(_c(f"[?] Detalhe: {e}", Fore.YELLOW))
@@ -176,8 +177,9 @@ def validar_e_resolver_ip(entrada):
 def verificar_host_vivo(ip_alvo, timeout=2):
     up = False
     resp_icmp = sr1(IP(dst=ip_alvo)/ICMP(), timeout=timeout, verbose=0)
-    if resp_icmp:
-        up = True 
+    
+    if resp_icmp or ip_alvo == "localhost" or ip_alvo == "127.0.0.1" or get_if_addr(conf.iface) ==  ip_alvo:
+        up = True
     return up
 
 def percorre_portas(inicio_porta, fim_porta, tipo_scan, ip_alvo, usar_decoy=False, qtd_decoy=2, lista_portas=None):
