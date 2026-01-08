@@ -153,7 +153,7 @@ def validar_e_resolver_ip(entrada):
         raise ValueError("Entrada vazia fornecida")
     
     partes = entrada.split('.')
-    if len(partes) == 4:
+    if len(partes) == 4 and partes[0].isdigit():
         try:
             for i, parte in enumerate(partes):
                     if not parte.isdigit():
@@ -249,6 +249,7 @@ def scan_udp(ip_alvo, porta, usar_decoy=False, qtd_decoy=2):
     servico = obter_servico(porta, 'udp')
 
     if resposta is None:
+        print(_c(f"[+] Porta {porta}/udp ABERTA|FILTRADA - Serviço: {servico}", Fore.GREEN, bright=True))
         return False
 
     if resposta.haslayer(UDP):
@@ -281,7 +282,8 @@ def scan_ack(ip_alvo, porta, usar_decoy=False, qtd_decoy=2):
     if resposta.haslayer(ICMP):
         icmp = resposta[ICMP]
         if int(icmp.type) == 3 and int(icmp.code) in (1, 2, 3, 9, 10, 13):
-            texto = f"(ICMP code {int(icmp.code)})"
+            print(_c(f"[!] Porta {porta}/tcp FILTRADA (ICMP code {int(icmp.code)}){modo}", Fore.YELLOW))
+            return False
             
     if resposta.haslayer(TCP):
         flags = int(resposta[TCP].flags)

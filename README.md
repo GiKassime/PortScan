@@ -127,13 +127,11 @@ sudo python3 portscan.py <IP> -decoy -p 1-1000
 ### 🎯 Testes Locais 
 ```bash
 # Scan SYN em localhost - porta única
-python3 portscan.py 127.0.0.1 -syn -p 80
+python3 portscan.py 192.168.3.48 -syn -p 80
 
 # Scan SYN em localhost - múltiplas portas específicas
-python3 portscan.py 127.0.0.1 -syn -p 22,80,443,3306
+python3 portscan.py 192.168.3.52 -syn -p 22,80,443,3306
 
-# Scan SYN em localhost - range de portas
-python3 portscan.py 127.0.0.1 -syn -p 1-100
 ```
 
 ### 🌐 Testes em Sites Públicos
@@ -145,16 +143,14 @@ python3 portscan.py scanme.nmap.org -syn -p 22,80,443
 python3 portscan.py 8.8.8.8 -udp -p 53
 
 # ACK Scan para detectar firewall
-python3 portscan.py scanme.nmap.org -ack -p 1-1024
+sudo python3 portscan.py 179.106.231.130 -ack -p 80,443
 ```
 
 ### 🎭 Testes com Decoy (IPs Falsos)
 ```bash
-# Decoy com 3 IPs falsos - porta específica
 python3 portscan.py scanme.nmap.org -syn -decoy 3 -p 80
 
-# Decoy em range de portas
-python3 portscan.py 127.0.0.1 -syn -decoy 5 -p 1-100
+sudo python3 portscan.py 179.106.231.130 -ack -p 80,443,53 -decoy 9
 ```
 
 ---
