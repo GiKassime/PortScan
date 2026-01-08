@@ -156,11 +156,11 @@ def validar_e_resolver_ip(entrada):
     if len(partes) == 4 and partes[0].isdigit():
         try:
             for i, parte in enumerate(partes):
-                    if not parte.isdigit():
+                if not parte.isdigit():
                         raise ValueError(f"IP '{entrada}' malformado: octeto {i+1} ('{parte}') contém letras")
                     
-                    num = int(parte)
-                    if num < 0 or num > 255:
+                num = int(parte)
+                if num < 0 or num > 255:
                         raise ValueError(f"IP '{entrada}' inválido: octeto {i+1} = {num} (deve ser 0-255)")
                 
             return entrada # Se passou por tudo, é um IP válido
